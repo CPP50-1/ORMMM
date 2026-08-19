@@ -26,8 +26,7 @@ This is the same category of problem as any production ORM (SQLAlchemy, Django O
     • A chainable, lazy query API returning recordset-like objects  
     • Detection and resolution of an N+1 query pattern  
     • At least one computed field  
-    • Test coverage (pytest) of the above, proportionate to time available
-   
+    • Test coverage (pytest) of the above, proportionate to time available     
 2.2 Out of scope  
     • A general-purpose SQL dialect or multi-database support  
     • Schema migrations  
@@ -66,31 +65,38 @@ class Field:
  
 class CharField(Field):  
     sql_type = "VARCHAR"  
+    
 5.2 Model Registry (Metaclass)  
 MUST	A metaclass that, on class creation, collects all declared Field instances on a model and registers the model in a global registry keyed by model name.  
 MUST	Registered models are discoverable at runtime (e.g. registry.get('product')).  
 SHOULD	Table name derivation from the class name or an explicit _table attribute.  
+
 5.3 Schema Generation & CRUD  
 MUST	Generate a valid CREATE TABLE statement from a model's declared fields and execute it against PostgreSQL.  
 MUST	Implement create() (INSERT), write() (UPDATE), search() (SELECT), and unlink() (DELETE) as methods usable from application code.  
 SHOULD	Parameterized queries throughout - no string-formatted SQL with user-supplied values.  
+
 5.4 Relations  
 MUST	Many2one: a descriptor-backed field that stores a foreign key column and, on access, lazily loads and returns the related record (not just the raw id).  
 MUST	One2many: a reverse accessor that, given a record, returns the set of related records pointing to it via a Many2one on the other model.  
 MUST	Many2many: a generated association (junction) table, with an accessor returning the related recordset in both directions.  
 SHOULD	Relation descriptors should not issue a query until the related data is accessed (lazy by default).  
+
 5.5 Query API  
 MUST	Model.search(domain) returns a RecordSet-like object, not a plain list.  
 MUST	The returned object supports chaining, e.g. Model.search([...]).filtered(lambda r: ...).  
 MUST	Iteration, len(), and bool() on a RecordSet only trigger the underlying query at the point they're evaluated (lazy evaluation), not at search() call time.  
 SHOULD	Support combining or narrowing an existing recordset without re-querying from scratch where reasonably possible.  
+
 5.6 N+1 Detection & Resolution  
 MUST	Construct a scenario where iterating over a recordset and accessing a Many2one (or One2many/Many2many) field per record issues one query per record (the N+1 pattern).  
 MUST	Instrument query execution (a counter or logger) so the N+1 pattern is measurable, not just asserted.  
 MUST	Implement a fix (batch/prefetch loading) and show the measured query count drop for the same scenario.  
+
 5.7 Computed Fields  
 MUST	At least one field whose value is derived from other fields via a method rather than stored directly.  
 SHOULD	A caching or invalidation strategy so the computed value isn't silently stale after a dependency changes.  
+
 5.8 Testing  
 MUST	A small pytest suite covering, at minimum: the field descriptors, the model registry, and the N+1 detection/fix - the three pieces the acceptance criteria check.  
 SHOULD	Additional coverage of relation types (Many2one/One2many/Many2many) as time allows.  
