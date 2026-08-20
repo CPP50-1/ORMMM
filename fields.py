@@ -1,9 +1,10 @@
 class Field:
 
-    def __init__(self, sql_type: str, required: bool = False):
+    def __init__(self, sql_type: str, **kwargs):
         self.sql_type = sql_type
-        self.required = required
         self.name = None
+        self.required = kwargs.pop("required", False)
+        # Works like .get() but removes it from kwargs after use so it doesn't get re-used later.
 
     def __set_name__(self, owner, name):
         self.name = name
