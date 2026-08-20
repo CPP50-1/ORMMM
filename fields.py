@@ -13,8 +13,10 @@ class Field:
             return self
         return instance.__dict__.get(self.name)
 
-    def __set__():
-        pass
+    def __set__(self, instance, value):
+        if self.required and value is None:
+            raise ValueError(f"{self.name} is mandatory.")
+        instance.__dict__.[self.name] = value
 
     def __repr__(self):
         class_name = self.__class__.__name__
