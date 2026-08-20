@@ -65,5 +65,5 @@ class BigIntField(Field):
 
 class DecimalField(Field):
 
-    def __init__(self, **kwargs):
-        super().__init__("DECIMAL", **kwargs)
+    def __init__(self, total_digits: int = 8, decimals: int = 2, **kwargs):
+        super().__init__(f"DECIMAL({total_digits},{decimals})", **kwargs)
