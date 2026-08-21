@@ -106,6 +106,7 @@ class Adapter:
         Called once per test session. Must leave the schema in a usable state.
         """
         self.db = DB()
+        Model.set_db(self.db)
 
         for model_cls in (Customer, Order, Tag):
             ddl = build_create_table(model_cls)

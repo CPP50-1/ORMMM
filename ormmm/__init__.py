@@ -3,7 +3,7 @@
 from .db import DB
 from .fields import BooleanField, CharField, Field, IntegerField
 from .models import Model, registry
-from .sql import build_create_table
+from .sql import build_create_table, build_insert
 
 __all__ = [
     "Model",
@@ -13,5 +13,6 @@ __all__ = [
     "BooleanField",
     "IntegerField",
     "build_create_table",
+    "build_insert",
     "DB",
 ]
