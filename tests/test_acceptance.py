@@ -43,9 +43,7 @@ class TestL1Foundation:
         field = models.Customer.__dict__.get("name")
         assert field is not None, "'name' is not declared on the Customer class itself"
         assert hasattr(field, "__get__"), "Field must implement __get__"
-        assert hasattr(field, "__set__"), (
-            "Field must implement __set__ (data descriptor)"
-        )
+        assert hasattr(field, "__set__"), "Field must implement __set__ (data descriptor)"
 
     def test_values_are_per_instance_not_per_class(self, models):
         """spec 5.1 — the classic 'shared mutable state' bug."""
@@ -66,8 +64,7 @@ class TestL1Foundation:
     def test_tables_exist_with_expected_columns(self, orm, models):
         """spec 5.3 — CREATE TABLE generated from the declared fields."""
         rows = orm.raw_sql(
-            "SELECT column_name, data_type FROM information_schema.columns "
-            "WHERE table_name = %s",
+            "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = %s",
             (orm.table_name(models.Customer),),
         )
         columns = {name: dtype for name, dtype in rows}
@@ -79,15 +76,11 @@ class TestL1Foundation:
 
     def test_column_types_match_field_types(self, orm, models):
         rows = orm.raw_sql(
-            "SELECT column_name, data_type FROM information_schema.columns "
-            "WHERE table_name = %s",
+            "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = %s",
             (orm.table_name(models.Order),),
         )
         columns = {name: dtype for name, dtype in rows}
-        assert (
-            "character varying" in columns["reference"]
-            or columns["reference"] == "text"
-        )
+        assert "character varying" in columns["reference"] or columns["reference"] == "text"
         assert columns["amount"] in ("integer", "bigint", "smallint")
 
 
@@ -159,9 +152,7 @@ class TestL2Crud:
 class TestL3Many2one:
     def test_many2one_returns_a_record_not_an_id(self, models):
         customer = models.Customer.create({"name": "Ada", "city": "Liege", "vip": True})
-        order = models.Order.create(
-            {"reference": "SO001", "amount": 100, "customer": customer}
-        )
+        order = models.Order.create({"reference": "SO001", "amount": 100, "customer": customer})
         related = order.customer
         assert not isinstance(related, int), "many2one returned a raw id, not a record"
         assert related.name == "Ada"
@@ -178,27 +169,21 @@ class TestL3Many2one:
 
     def test_many2one_survives_a_reload(self, models):
         customer = models.Customer.create({"name": "Ada", "city": "Liege", "vip": True})
-        order = models.Order.create(
-            {"reference": "SO001", "amount": 100, "customer": customer}
-        )
+        order = models.Order.create({"reference": "SO001", "amount": 100, "customer": customer})
         assert models.Order.browse(order.id).customer.id == customer.id
 
     @pytest.mark.should
     def test_many2one_is_lazy(self, orm, models):
         """spec 5.4 SHOULD — no query until the related data is touched."""
         customer = models.Customer.create({"name": "Ada", "city": "Liege", "vip": True})
-        order = models.Order.create(
-            {"reference": "SO001", "amount": 100, "customer": customer}
-        )
+        order = models.Order.create({"reference": "SO001", "amount": 100, "customer": customer})
         reloaded = models.Order.browse(order.id)
         assert reloaded.reference == "SO001"
         orm.reset_queries()
         related = reloaded.customer
         assert orm.query_count() == 0, "accessing the m2o object already queried"
         assert related.name == "Ada"
-        assert orm.query_count() >= 1, (
-            "reading the related field issued no query at all"
-        )
+        assert orm.query_count() >= 1, "reading the related field issued no query at all"
 
 
 # --------------------------------------------------------------------------
@@ -219,9 +204,7 @@ class TestL4Relations:
         assert {o.reference for o in customer.orders} == {"A1", "A2"}
 
     def test_one2many_is_empty_not_none(self, models):
-        customer = models.Customer.create(
-            {"name": "Solo", "city": "Liege", "vip": False}
-        )
+        customer = models.Customer.create({"name": "Solo", "city": "Liege", "vip": False})
         assert len(customer.orders) == 0
         assert not customer.orders, "an empty recordset must be falsy"
 
@@ -238,9 +221,7 @@ class TestL4Relations:
         order = models.Order.create({"reference": "SO001", "amount": 100})
         order.write({"tags": [tag_a, tag_b]})
         assert {t.name for t in order.tags} == {"urgent", "export"}
-        assert order.id in [o.id for o in tag_a.orders], (
-            "reverse m2m accessor is broken"
-        )
+        assert order.id in [o.id for o in tag_a.orders], "reverse m2m accessor is broken"
 
     def test_many2many_is_shared_not_copied(self, models):
         tag = models.Tag.create({"name": "urgent"})
@@ -267,10 +248,7 @@ class TestL5RecordSet:
         """spec 5.5 — the query fires on evaluation, not at search() time."""
         orm.reset_queries()
         result = models.Order.search([("amount", ">", 100)])
-        assert orm.query_count() == 0, (
-            f"search() executed {orm.query_count()} query/queries eagerly: "
-            f"{orm.query_log()}"
-        )
+        assert orm.query_count() == 0, f"search() executed {orm.query_count()} query/queries eagerly: {orm.query_log()}"
         assert len(result) > 0
         assert orm.query_count() >= 1, "evaluation issued no query"
 
@@ -287,26 +265,18 @@ class TestL5RecordSet:
         assert all(r.amount > 140 for r in result)
 
     def test_filtered_returns_a_chainable_recordset(self, models, dataset):
-        result = (
-            models.Order.search([])
-            .filtered(lambda r: r.amount > 120)
-            .filtered(lambda r: r.amount < 126)
-        )
+        result = models.Order.search([]).filtered(lambda r: r.amount > 120).filtered(lambda r: r.amount < 126)
         assert len(result) == 5  # 121..125
 
     @pytest.mark.should
-    def test_filtered_on_an_evaluated_recordset_does_not_requery(
-        self, orm, models, dataset
-    ):
+    def test_filtered_on_an_evaluated_recordset_does_not_requery(self, orm, models, dataset):
         """spec 5.5 SHOULD — narrowing without re-querying from scratch."""
         recordset = models.Order.search([])
         len(recordset)  # force evaluation
         orm.reset_queries()
         subset = recordset.filtered(lambda r: r.amount > 140)
         assert len(subset) == 9
-        assert orm.query_count() == 0, (
-            f"filtered() re-queried the database: {orm.query_log()}"
-        )
+        assert orm.query_count() == 0, f"filtered() re-queried the database: {orm.query_log()}"
 
 
 # --------------------------------------------------------------------------
@@ -339,9 +309,7 @@ class TestL6NPlusOne:
         names = [order.customer.name for order in orders]
         fixed = orm.query_count()
         assert len(names) == 50
-        assert fixed <= 3, (
-            f"prefetch issued {fixed} queries, expected <= 3: {orm.query_log()}"
-        )
+        assert fixed <= 3, f"prefetch issued {fixed} queries, expected <= 3: {orm.query_log()}"
 
     def test_the_improvement_is_at_least_tenfold(self, orm, models, dataset):
         with orm.without_prefetch():

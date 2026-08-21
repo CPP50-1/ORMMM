@@ -17,9 +17,7 @@ def build_create_table(cls) -> sql.Composable:
             # Skip the metaclass-injected IntField; we render SERIAL PRIMARY KEY instead
             continue
 
-        columns.append(
-            sql.SQL("{} {}").format(sql.Identifier(name), sql.SQL(field.sql_type))
-        )
+        columns.append(sql.SQL("{} {}").format(sql.Identifier(name), sql.SQL(field.sql_type)))
 
     # Compose: CREATE TABLE IF NOT EXISTS table_name (col1, col2, ...)
     # IF NOT EXISTS makes setup idempotent, safe to re-run without teardown

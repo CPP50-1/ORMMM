@@ -1,9 +1,9 @@
 """ORMMM - Mini ORM for CPP50"""
 
-from .models import Model, registry
-from .fields import Field, CharField, BoolField, IntField
-from .sql import build_create_table
 from .db import DB
+from .fields import BoolField, CharField, Field, IntField
+from .models import Model, registry
+from .sql import build_create_table
 
 __all__ = [
     "Model",

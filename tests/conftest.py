@@ -1,6 +1,7 @@
 """Fixtures for the mini-ORM acceptance suite. Do not edit - fill in orm_adapter.py."""
 
 import pytest
+
 from orm_adapter import Adapter
 
 
@@ -38,12 +39,7 @@ def dataset(orm, models):
 
     Fixed shape so query counts are comparable between groups.
     """
-    customers = [
-        models.Customer.create(
-            {"name": f"Customer {i}", "city": "Liege", "vip": i == 0}
-        )
-        for i in range(5)
-    ]
+    customers = [models.Customer.create({"name": f"Customer {i}", "city": "Liege", "vip": i == 0}) for i in range(5)]
     tags = [models.Tag.create({"name": f"tag-{i}"}) for i in range(3)]
     orders = []
     for i in range(50):

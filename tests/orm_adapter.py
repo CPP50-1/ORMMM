@@ -131,9 +131,7 @@ class Adapter:
         """
         if self.db:
             # "order" is a reserved word, must be quoted
-            self.db.execute(
-                'TRUNCATE TABLE customer, "order", tag RESTART IDENTITY CASCADE'
-            )
+            self.db.execute('TRUNCATE TABLE customer, "order", tag RESTART IDENTITY CASCADE')
             self.db.reset_queries()
 
     # ------------------------------------------------------------------

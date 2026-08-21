@@ -1,5 +1,4 @@
 class Field:
-
     def __init__(self, sql_type: str, **kwargs):
         self.sql_type = sql_type
         self.name = None
@@ -8,7 +7,7 @@ class Field:
 
     def __set_name__(self, owner, name):
         self.name = name
-    
+
     def __get__(self, instance, owner):
         if instance is None:
             return self
@@ -29,42 +28,35 @@ class Field:
 
 
 class CharField(Field):
-
     def __init__(self, max_length: int = 50, **kwargs):
         super().__init__(f"VARCHAR({max_length})", **kwargs)
 
 
 class TextField(Field):
-
     def __init__(self, **kwargs):
         super().__init__("TEXT", **kwargs)
 
 
 class BoolField(Field):
-
     def __init__(self, **kwargs):
         super().__init__("BOOLEAN", **kwargs)
 
 
 class IntField(Field):
-
     def __init__(self, **kwargs):
         super().__init__("INTEGER", **kwargs)
 
 
 class SmallIntField(Field):
-
     def __init__(self, **kwargs):
         super().__init__("SMALLINT", **kwargs)
 
 
 class BigIntField(Field):
-
     def __init__(self, **kwargs):
         super().__init__("BIGINT", **kwargs)
 
 
 class DecimalField(Field):
-
     def __init__(self, total_digits: int = 8, decimals: int = 2, **kwargs):
         super().__init__(f"DECIMAL({total_digits},{decimals})", **kwargs)
