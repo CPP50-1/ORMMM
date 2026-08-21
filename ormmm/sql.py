@@ -24,3 +24,32 @@ def build_create_table(cls) -> sql.Composed:
     return sql.SQL("CREATE TABLE IF NOT EXISTS {} ({})").format(
         sql.Identifier(cls.__name__.lower()), sql.SQL(", ").join(columns)
     )
+
+
+def build_insert(cls, values: dict) -> tuple[sql.Composed, list]:
+    """Generate a parameterized INSERT ... RETURNING id for a model.
+
+    - Table name: lowercase class name (matches registry key & adapter contract).
+    - Only declared fields are inserted; 'id' is skipped (SERIAL PRIMARY KEY).
+    - Column names go through sql.Identifier; values are passed as %s query
+      parameters, never string-formatted (spec 5.3 — injection safety).
+    - Keys in `values` that are not declared fields are ignored.
+    """
+    columns: list[str] = []
+    params: list = []
+    for name in cls._fields:
+        if name == "id":
+            continue
+        if name in values:
+            columns.append(name)
+            params.append(values[name])
+
+    if not columns:
+        raise ValueError(f"no column values to insert for {cls.__name__}")
+
+    query = sql.SQL("INSERT INTO {} ({}) VALUES ({}) RETURNING id").format(
+        sql.Identifier(cls.__name__.lower()),
+        sql.SQL(", ").join(sql.Identifier(name) for name in columns),
+        sql.SQL(", ").join(sql.Placeholder() for _ in columns),
+    )
+    return query, params

@@ -1,6 +1,8 @@
 from typing import Any, ClassVar
 
+from .db import DB
 from .fields import Field, IntegerField
+from .sql import build_insert
 
 registry = {}
 
@@ -40,6 +42,12 @@ class ModelMeta(type):
 
 class Model(metaclass=ModelMeta):
     _fields: ClassVar[dict[str, Field]] = {}
+    _db: ClassVar[DB | None] = None
+
+    @classmethod
+    def set_db(cls, db: DB) -> None:
+        """Designate the shared connection wrapper; every model issues SQL through it."""
+        Model._db = db
 
     def __init__(self, **kwargs):
         for field_name, field in self._fields.items():
@@ -53,7 +61,16 @@ class Model(metaclass=ModelMeta):
         return instance
 
     def save(self):
-        pass
+        if Model._db is None:
+            raise RuntimeError("no database set: call Model.set_db() first")
+        values = {name: getattr(self, name) for name in self._fields if name != "id"}
+        if self.id is None:
+            row = Model._db.execute(*build_insert(type(self), values)).fetchone()
+            if row is None:
+                raise RuntimeError(f"INSERT ... RETURNING id returned no row for {type(self).__name__}")
+            self.id = row[0]
+        else:
+            raise NotImplementedError("UPDATE not implemented yet")
 
     @classmethod
     def search(cls, domain: list):
