@@ -1,6 +1,6 @@
 from typing import Any, ClassVar
 
-from fields import Field, IntField
+from .fields import Field, IntField
 
 registry = {}
 
@@ -10,7 +10,7 @@ class ModelMeta(type):
         # 1. Collect fields from parent classes
         fields: dict[str, Field] = {}
         for base in bases:
-            if hasattr(base, '_fields'):
+            if hasattr(base, "_fields"):
                 fields.update(base._fields)
 
         # 2. Add fields from current class
@@ -20,19 +20,19 @@ class ModelMeta(type):
                 fields[attr_name] = attr_value
 
         # 3. Auto-add id field if not present and not base Model
-        if name != 'Model' and 'id' not in fields:
+        if name != "Model" and "id" not in fields:
             id_field = IntField(required=True)
-            id_field.__set_name__(None, 'id')
-            fields['id'] = id_field
+            id_field.__set_name__(None, "id")
+            fields["id"] = id_field
 
         # 4. Store fields on the class
-        attrs['_fields'] = fields
+        attrs["_fields"] = fields
 
         # 5. Create the class
         cls = super().__new__(mcs, name, bases, attrs)
 
         # 6. Register in registry (except base class) - lowercase key
-        if name != 'Model':
+        if name != "Model":
             registry[name.lower()] = cls
 
         return cls
@@ -43,7 +43,7 @@ class Model(metaclass=ModelMeta):
 
     def __init__(self, **kwargs):
         for field_name, field in self._fields.items():
-            value = kwargs.get(field_name, getattr(field, 'default', None))
+            value = kwargs.get(field_name, getattr(field, "default", None))
             setattr(self, field_name, value)
 
     @classmethod
