@@ -1,14 +1,12 @@
 class Field:
-
-    def __init__(self, sql_type: str, **kwargs):
+    def __init__(self, sql_type: str, *, required: bool = False, **kwargs):
         self.sql_type = sql_type
+        self.required = required
         self.name = None
-        self.required = kwargs.pop("required", False)
-        # Works like .get() but removes it from kwargs after use so it doesn't get re-used later.
 
     def __set_name__(self, owner, name):
         self.name = name
-    
+
     def __get__(self, instance, owner):
         if instance is None:
             return self
@@ -29,42 +27,52 @@ class Field:
 
 
 class CharField(Field):
-
     def __init__(self, max_length: int = 50, **kwargs):
         super().__init__(f"VARCHAR({max_length})", **kwargs)
 
 
 class TextField(Field):
-
     def __init__(self, **kwargs):
         super().__init__("TEXT", **kwargs)
 
 
-class BoolField(Field):
-
+class BooleanField(Field):
     def __init__(self, **kwargs):
         super().__init__("BOOLEAN", **kwargs)
 
 
-class IntField(Field):
-
+class IntegerField(Field):
     def __init__(self, **kwargs):
         super().__init__("INTEGER", **kwargs)
 
 
 class SmallIntField(Field):
-
     def __init__(self, **kwargs):
         super().__init__("SMALLINT", **kwargs)
 
 
 class BigIntField(Field):
-
     def __init__(self, **kwargs):
         super().__init__("BIGINT", **kwargs)
 
 
 class DecimalField(Field):
+    def __init__(self, values: tuple[int, int] | str = (6,2), /, **kwargs):
+        if isinstance(values, tuple):
+            precision, scale = values
 
-    def __init__(self, total_digits: int = 8, decimals: int = 2, **kwargs):
-        super().__init__(f"DECIMAL({total_digits},{decimals})", **kwargs)
+        elif isinstance(values, str):
+            v = values.split(",")
+            if len(v) != 2:
+                raise ValueError("incorrect amount of values given to DecimalField.")
+            
+            parts = [part.strip() for part in v]
+            if not (parts[0].isdigit() and parts[1].isdigit()):
+                raise TypeError("incorrect argument types given to DecimalField.")
+            
+            precision = int(parts[0])
+            scale = int(parts[1])
+            if precision < 1 or scale < 0 or precision < scale:
+                raise ValueError("incorrect value(s) given to DecimalField.")
+            
+        super().__init__(f"DECIMAL({precision},{scale})", **kwargs)

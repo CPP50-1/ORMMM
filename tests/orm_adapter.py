@@ -55,6 +55,41 @@ Two conventions the suite relies on:
 """
 
 from contextlib import contextmanager
+from types import SimpleNamespace
+
+from ormmm.db import DB
+from ormmm.fields import BooleanField, CharField, IntegerField
+from ormmm.models import Model, registry
+from ormmm.sql import build_create_table
+
+
+# Contract models, declared here (not in ORM core) per fixed acceptance spec
+class Customer(Model):
+    """Customer model with name, city, vip fields.
+    The metaclass auto-adds 'id' as SERIAL PRIMARY KEY.
+    Registry key: 'customer'
+    """
+
+    name = CharField()
+    city = CharField()
+    vip = BooleanField()
+
+
+class Order(Model):
+    """Order model with reference and amount fields.
+    Registry key: 'order'
+    """
+
+    reference = CharField()
+    amount = IntegerField()
+
+
+class Tag(Model):
+    """Tag model with name field.
+    Registry key: 'tag'
+    """
+
+    name = CharField()
 
 
 class Adapter:
@@ -62,16 +97,31 @@ class Adapter:
     # Lifecycle
     # ------------------------------------------------------------------
 
+    def __init__(self):
+        self.db = None
+
     def setup(self):
         """Connect to PostgreSQL, declare the three models, create the tables.
 
         Called once per test session. Must leave the schema in a usable state.
         """
-        raise NotImplementedError
+        self.db = DB()
+
+        for model_cls in (Customer, Order, Tag):
+            ddl = build_create_table(model_cls)
+            self.db.execute(ddl)
 
     def teardown(self):
         """Drop the tables / close the connection. Called once at the end."""
-        raise NotImplementedError
+        if self.db:
+            # Drop tables in reverse dependency order (Order references Customer)
+            for table in ("order_tag", "order", "customer", "tag"):
+                try:
+                    self.db.execute(f"DROP TABLE IF EXISTS {table} CASCADE")
+                except Exception:
+                    pass
+            self.db.close()
+            self.db = None
 
     def reset_data(self):
         """Empty all rows (TRUNCATE ... RESTART IDENTITY CASCADE) between tests.
@@ -79,7 +129,10 @@ class Adapter:
         Also clear any in-memory cache / identity map / session your
         architecture keeps, otherwise tests will leak into each other.
         """
-        raise NotImplementedError
+        if self.db:
+            # "order" is a reserved word, must be quoted
+            self.db.execute('TRUNCATE TABLE customer, "order", tag RESTART IDENTITY CASCADE')
+            self.db.reset_queries()
 
     # ------------------------------------------------------------------
     # Introspection
@@ -88,22 +141,26 @@ class Adapter:
     @property
     def models(self):
         """Return SimpleNamespace(Customer=..., Order=..., Tag=...)."""
-        raise NotImplementedError
+        return SimpleNamespace(Customer=Customer, Order=Order, Tag=Tag)
 
     def registry_lookup(self, key):
         """Return the model class registered under `key` ("customer", ...).
 
         Return None if the key is unknown — do not raise.
         """
-        raise NotImplementedError
+        return registry.get(key)
 
     def table_name(self, model):
-        """Return the PostgreSQL table name backing `model`."""
-        raise NotImplementedError
+        """Return the PostgreSQL table name backing `model`.
+
+        Matches the builder: lowercase class name.
+        """
+        return model.__name__.lower()
 
     def m2m_table_name(self):
         """Return the junction table name generated for Order.tags."""
-        raise NotImplementedError
+        # Order.tags is the many2many; junction table name convention: order_tag
+        return "order_tag"
 
     def raw_sql(self, sql, params=None):
         """Execute raw SQL out-of-band and return a list of tuples.
@@ -111,7 +168,10 @@ class Adapter:
         Used by the suite only for schema introspection. It must NOT be
         counted by your query counter (or reset the counter afterwards).
         """
-        raise NotImplementedError
+        if self.db:
+            cursor = self.db.raw_execute(sql, params)
+            return cursor.fetchall()
+        return []
 
     # ------------------------------------------------------------------
     # Query instrumentation  (spec 5.6 — the counter is a MUST, build it early)
@@ -119,11 +179,14 @@ class Adapter:
 
     def reset_queries(self):
         """Reset the executed-query counter to zero."""
-        raise NotImplementedError
+        if self.db:
+            self.db.reset_queries()
 
     def query_count(self):
         """Return the number of SQL statements executed since the last reset."""
-        raise NotImplementedError
+        if self.db:
+            return self.db.query_count()
+        return 0
 
     def query_log(self):
         """Return the list of SQL statements executed since the last reset.
@@ -131,6 +194,8 @@ class Adapter:
         Only used for diagnostics in failure messages. Return [] if you have
         no log (the counter alone is enough to pass).
         """
+        if self.db:
+            return self.db.query_log()
         return []
 
     # ------------------------------------------------------------------
