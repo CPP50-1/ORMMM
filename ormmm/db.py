@@ -7,6 +7,7 @@ Two connections:
 
 import psycopg
 from psycopg import sql
+from psycopg.abc import QueryNoTemplate
 
 
 class DB:
@@ -19,35 +20,37 @@ class DB:
         self.raw_conn = psycopg.connect(dsn, autocommit=True)
 
         self._query_count = 0
-        self._query_log = []
+        self._query_log: list[str] = []
 
-    def execute(self, query, params=None):
+    def execute(self, query: QueryNoTemplate, params=None):
         """Execute a query on the counted connection.
 
         Increments the query counter and appends to the log.
         Accepts both SQL strings and psycopg.sql.Composable objects.
         """
         self._query_count += 1
-        # Materialize composable to string for logging
-        if isinstance(query, sql.Composable):
-            sql_str = query.as_string(self.conn)
-        else:
-            sql_str = query
-        self._query_log.append(sql_str)
+        self._log_query(query, self.conn)
+        return self.conn.execute(query, params)
 
-        # Execute with parameters (params may be None)
-        return self.conn.execute(sql_str, params)
-
-    def raw_execute(self, query, params=None):
+    def raw_execute(self, query: QueryNoTemplate, params=None):
         """Execute on the raw connection — NOT counted or logged.
 
         Used by adapter.raw_sql() for schema introspection without polluting counts.
         """
+        return self.raw_conn.execute(query, params)
+
+    def _log_query(self, query: QueryNoTemplate, conn: psycopg.Connection) -> None:
+        """Materialize a query to plain text for the query log.
+
+        Logging materializes off to the side; execution keeps the typed
+        object so no plain str ever flows back into conn.execute().
+        """
         if isinstance(query, sql.Composable):
-            sql_str = query.as_string(self.raw_conn)
+            self._query_log.append(query.as_string(conn))
+        elif isinstance(query, bytes):
+            self._query_log.append(query.decode())
         else:
-            sql_str = query
-        return self.raw_conn.execute(sql_str, params)
+            self._query_log.append(query)
 
     def reset_queries(self):
         """Reset the query counter and log — called by adapter.reset_queries()."""

@@ -1,7 +1,7 @@
 from psycopg import sql
 
 
-def build_create_table(cls) -> sql.Composable:
+def build_create_table(cls) -> sql.Composed:
     """Generate CREATE TABLE DDL (Data Definition Language) for a model class.
 
     - Table name: lowercase class name (matches registry key & adapter contract).
@@ -10,7 +10,7 @@ def build_create_table(cls) -> sql.Composable:
     - Column types come from field.sql_type (trusted internal constants).
     """
     # Start with the auto-increment primary key
-    columns = [sql.SQL("id SERIAL PRIMARY KEY")]
+    columns: list[sql.Composable] = [sql.SQL("id SERIAL PRIMARY KEY")]
 
     for name, field in cls._fields.items():
         if name == "id":
