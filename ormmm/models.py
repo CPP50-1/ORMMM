@@ -1,6 +1,6 @@
 from typing import Any, ClassVar
 
-from .fields import Field, IntField
+from .fields import Field, IntegerField
 
 registry = {}
 
@@ -21,7 +21,7 @@ class ModelMeta(type):
 
         # 3. Auto-add id field if not present and not base Model
         if name != "Model" and "id" not in fields:
-            id_field = IntField(required=True)
+            id_field = IntegerField(required=True)
             id_field.__set_name__(None, "id")
             fields["id"] = id_field
 

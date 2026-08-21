@@ -1,12 +1,5 @@
 class Field:
-<<<<<<< HEAD:ormmm/fields.py
-    def __init__(self, sql_type: str, **kwargs):
-||||||| parent of fe5f387 (fix: more robust DecimalField; names for BooleanField and IntegerField (matching readme file); re-instated 'required' in Field's __init__ signature):fields.py
-
-    def __init__(self, sql_type: str, **kwargs):
-=======
     def __init__(self, sql_type: str, *, required: bool = False, **kwargs):
->>>>>>> fe5f387 (fix: more robust DecimalField; names for BooleanField and IntegerField (matching readme file); re-instated 'required' in Field's __init__ signature):fields.py
         self.sql_type = sql_type
         self.required = required
         self.name = None
@@ -43,26 +36,12 @@ class TextField(Field):
         super().__init__("TEXT", **kwargs)
 
 
-<<<<<<< HEAD:ormmm/fields.py
-class BoolField(Field):
-||||||| parent of fe5f387 (fix: more robust DecimalField; names for BooleanField and IntegerField (matching readme file); re-instated 'required' in Field's __init__ signature):fields.py
-class BoolField(Field):
-
-=======
 class BooleanField(Field):
->>>>>>> fe5f387 (fix: more robust DecimalField; names for BooleanField and IntegerField (matching readme file); re-instated 'required' in Field's __init__ signature):fields.py
     def __init__(self, **kwargs):
         super().__init__("BOOLEAN", **kwargs)
 
 
-<<<<<<< HEAD:ormmm/fields.py
-class IntField(Field):
-||||||| parent of fe5f387 (fix: more robust DecimalField; names for BooleanField and IntegerField (matching readme file); re-instated 'required' in Field's __init__ signature):fields.py
-class IntField(Field):
-
-=======
 class IntegerField(Field):
->>>>>>> fe5f387 (fix: more robust DecimalField; names for BooleanField and IntegerField (matching readme file); re-instated 'required' in Field's __init__ signature):fields.py
     def __init__(self, **kwargs):
         super().__init__("INTEGER", **kwargs)
 
@@ -78,14 +57,6 @@ class BigIntField(Field):
 
 
 class DecimalField(Field):
-<<<<<<< HEAD:ormmm/fields.py
-    def __init__(self, total_digits: int = 8, decimals: int = 2, **kwargs):
-        super().__init__(f"DECIMAL({total_digits},{decimals})", **kwargs)
-||||||| parent of fe5f387 (fix: more robust DecimalField; names for BooleanField and IntegerField (matching readme file); re-instated 'required' in Field's __init__ signature):fields.py
-
-    def __init__(self, total_digits: int = 8, decimals: int = 2, **kwargs):
-        super().__init__(f"DECIMAL({total_digits},{decimals})", **kwargs)
-=======
     def __init__(self, values: tuple[int, int] | str = (6,2), /, **kwargs):
         if isinstance(values, tuple):
             precision, scale = values
@@ -105,4 +76,3 @@ class DecimalField(Field):
                 raise ValueError("incorrect value(s) given to DecimalField.")
             
         super().__init__(f"DECIMAL({precision},{scale})", **kwargs)
->>>>>>> fe5f387 (fix: more robust DecimalField; names for BooleanField and IntegerField (matching readme file); re-instated 'required' in Field's __init__ signature):fields.py

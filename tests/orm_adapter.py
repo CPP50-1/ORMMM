@@ -58,7 +58,7 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 
 from ormmm.db import DB
-from ormmm.fields import BoolField, CharField, IntField
+from ormmm.fields import BooleanField, CharField, IntegerField
 from ormmm.models import Model, registry
 from ormmm.sql import build_create_table
 
@@ -72,7 +72,7 @@ class Customer(Model):
 
     name = CharField()
     city = CharField()
-    vip = BoolField()
+    vip = BooleanField()
 
 
 class Order(Model):
@@ -81,7 +81,7 @@ class Order(Model):
     """
 
     reference = CharField()
-    amount = IntField()
+    amount = IntegerField()
 
 
 class Tag(Model):
