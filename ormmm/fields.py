@@ -43,6 +43,9 @@ class Field:
         """Gère l'opérateur égalité (==)"""
         return QueryExpression(self.name, "=", other)
 
+    def __hash__(self) -> int:
+        return hash(self.name)
+
     def __lt__(self, other: Any) -> QueryExpression:
         """Gère l'opérateur inférieur à (<)"""
         return QueryExpression(self.name, "<", other)
