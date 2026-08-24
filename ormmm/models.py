@@ -14,34 +14,34 @@ class RecordSet:
     def __init__(self, model_class: type, domain: list, records: list | None = None):
         self.model_class = model_class
         self.domain = domain
-        # Si records est fourni (ex: après un filtrage), le cache est pré-rempli
+        # If records is provided (ex: after a filter), the cache is preemptively filled
         self._cache: list | None = records
 
     def filtered(self, predicate_lambda) -> RecordSet:
-        """[MUST 5.5] Permet le chaînage après le search sans ré-exécuter le SQL brut."""
-        # Évalue le RecordSet actuel pour obtenir les instances en mémoire
+        """[MUST 5.5] Allows chain-searching without executing raw SQL multiple times"""
+        # Evaluate the current RecordSet to obtain instanciated memory items
         records = self._evaluate()
-        # Applique le filtre de l'utilisateur
+        # Apply the user's filter
         filtered_records = [r for r in records if predicate_lambda(r)]
-        # Renvoie un NOUVEAU RecordSet avec le cache déjà peuplé
+        # Returns a new RecordSet with the cache already populated
         return RecordSet(self.model_class, self.domain, records=filtered_records)
 
     def _evaluate(self) -> list:
-        """Méthode interne qui effectue la requête SQL au tout dernier moment."""
+        """Internal method executing the SQL request as late as possible"""
         if self._cache is not None:
             return self._cache
 
         if self.model_class._db is None:
             raise RuntimeError("no database set: call Model.set_db() first")
 
-        # 1. On délègue la génération de la requête au module sql.py !
+        # 1. Hand over the request generation to sql.py
         query, params = build_search(self.model_class, self.domain)
 
-        # 2. Exécution de la requête via votre connexion globale [MUST 5.2]
+        # 2. Execute the request via global connection [MUST 5.2]
         cursor = self.model_class._db.execute(query, params)
         rows = cursor.fetchall()
 
-        # 3. Extraction des colonnes pour instancier vos modèles
+        # 3. Extract columns to instanciate models
         col_names = [desc[0] for desc in cursor.description] if cursor.description else []
 
         self._cache = []
@@ -55,7 +55,7 @@ class RecordSet:
 
         return self._cache
 
-    # --- [MUST 5.5] Déclencheurs magiques d'évaluation tardive ---
+    # --- [MUST 5.5] Late/lazy evaluation triggers ---
     def __len__(self) -> int:
         return len(self._evaluate())
 
@@ -66,13 +66,13 @@ class RecordSet:
         return iter(self._evaluate())
 
     def __repr__(self) -> str:
-        # Pratique pour le debugging dans vos tests
+        # For debugging
         return f"<RecordSet {self.model_class.__name__} (cached={self._cache is not None})>"
 
     def __getitem__(self, index: int | slice) -> Any:
         """
-        Permet d'accéder aux enregistrements avec des crochets (ex: records[0]).
-        Déclenche l'évaluation de la requête SQL si ce n'est pas déjà fait.
+        Allows record access via brackets (ex: records[0]).
+        Triggers SQL request evaluation if it hasn't already happened.
         """
         return self._evaluate()[index]
 
@@ -145,8 +145,8 @@ class Model(metaclass=ModelMeta):
     @classmethod
     def search(cls, domain: list | None = None) -> RecordSet:
         """
-        [MUST 5.5] Ne déclenche aucun SQL à l'appel.
-        Renvoie l'objet RecordSet paresseux (lazy).
+        [MUST 5.5] No SQL trigger upon call.
+        Returns a lazy RecordSet object.
         """
         if domain is None:
             domain = []

@@ -8,7 +8,7 @@ class QueryExpression:
         self.value = value
 
     def to_sql(self) -> tuple[str, Any]:
-        """Retourne le morceau de SQL paramétré et sa valeur associée."""
+        """Returns the parametered SQL piece and its associated value."""
         return f"{self.field_name} {self.operator} %s", self.value
 
 
@@ -58,9 +58,9 @@ class Field:
         return QueryExpression(self.name, "!=", other)
 
     def in_(self, values: Any) -> QueryExpression:
-        """Gère l'opérateur d'appartenance IN (ex: Customer.id.in_([1, 2]))"""
-        # On force la conversion en tuple car en psycopg, un tuple devient une
-        # liste SQL (1, 2, 3) alors qu'une liste devient un tableau ARRAY[1, 2, 3]
+        """Special method to manage the membership operator IN (ex: Customer.id.in_([1, 2]))"""
+        # Forced conversion into tuple because, in the psycopg language, a tuple becomes a SQL list(1, 2, 3)
+        # while a list becomes an ARRAY[1, 2, 3]
         return QueryExpression(self.name, "in", tuple(values))
 
 

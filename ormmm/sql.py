@@ -25,19 +25,19 @@ def build_where_clause(domain: list) -> tuple[sql.Composed | None, list]:
     where_clauses: list[sql.Composable] = []
     params: list = []
 
-    # Import local pour éviter les imports circulaires
+    # Local import to avoid circular dependencies
     from .fields import QueryExpression
 
     for expr in domain:
         if isinstance(expr, QueryExpression):
-            # Format 1 : Votre expression Pythonique (ex: User.name == 'Alice')
+            # Format 1 : Pythonic expression
             if expr.field_name is None:
                 raise ValueError("QueryExpression field_name cannot be None")
             field_name = expr.field_name
             op_key = str(expr.operator).lower().strip()
             value = expr.value
         elif isinstance(expr, tuple) and len(expr) == 3:
-            # Format 2 : Le tuple classique exigé par vos tests (ex: ('city', '=', 'Liege'))
+            # Format 2 : Odoo-style format, needed for test validation (ex: ('city', '=', 'Liege'))
             field_name, op_key, value = expr
             op_key = str(op_key).lower().strip()
         else:
@@ -49,19 +49,19 @@ def build_where_clause(domain: list) -> tuple[sql.Composed | None, list]:
         sql_op = APPROVED_OPS.get(op_key, sql.SQL("="))
 
         if op_key == "in":
-            # Syntaxe id = ANY(%s) pour les listes
+            # id = ANY(%s)  syntax for lists
             where_clauses.append(
                 sql.SQL("{} {} ({})").format(sql.Identifier(field_name), sql_op, sql.Placeholder())
             )
             params.append(list(value))
         else:
-            # Syntaxe standard pour les autres opérateurs (==, <, >, etc.)
+            # Standard syntax for other operators (==, <, >, etc.)
             where_clauses.append(
                 sql.SQL("{} {} {}").format(sql.Identifier(field_name), sql_op, sql.Placeholder())
             )
             params.append(value)
 
-    # Fusionne toutes les conditions individuelles avec un opérateur ' AND '
+    # Joins all individual conditions with ' AND '
     composed_where = sql.SQL(" AND ").join(where_clauses)
     return composed_where, params
 
@@ -129,13 +129,13 @@ def build_search(cls, domain: list) -> tuple[sql.Composed, list]:
     table_name = getattr(cls, "_table", cls.__name__.lower())
     table_identifier = sql.Identifier(table_name)
 
-    # 1. On extrait le fragment de clause WHERE et ses paramètres associés
+    # 1. Get the fragment of the where clause and its associated parameters
     where_fragment, params = build_where_clause(domain)
 
-    # 2. Si le domaine est vide (where_fragment vaut None) : SELECT global simple
+    # 2. If domain is empty (and therefore where_fragment is None) : "naked" SELECT all
     if where_fragment is None:
         return sql.SQL("SELECT * FROM {}").format(table_identifier), []
 
-    # 3. Sinon, assemblage final sécurisé avec la clause WHERE [spec 5.3]
+    # 3. Otherwise, rebuild everything together with the where clause [5.3]
     query = sql.SQL("SELECT * FROM {} WHERE {}").format(table_identifier, where_fragment)
     return query, params
