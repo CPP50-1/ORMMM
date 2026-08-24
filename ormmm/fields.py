@@ -1,3 +1,17 @@
+from typing import Any
+
+
+class QueryExpression:
+    def __init__(self, field_name: str | None, operator: str, value: Any):
+        self.field_name = field_name
+        self.operator = operator
+        self.value = value
+
+    def to_sql(self) -> tuple[str, Any]:
+        """Retourne le morceau de SQL paramétré et sa valeur associée."""
+        return f"{self.field_name} {self.operator} %s", self.value
+
+
 class Field:
     def __init__(self, sql_type: str, *, required: bool = False, **kwargs):
         self.sql_type = sql_type
@@ -24,6 +38,30 @@ class Field:
             attributes.append(f"{key}={value!r}")
         attr_string = ", ".join(attributes)
         return f"<{class_name} {attr_string}>"
+
+    def __eq__(self, other: Any) -> QueryExpression:
+        """Gère l'opérateur égalité (==)"""
+        return QueryExpression(self.name, "=", other)
+
+    def __lt__(self, other: Any) -> QueryExpression:
+        """Gère l'opérateur inférieur à (<)"""
+        return QueryExpression(self.name, "<", other)
+
+    def __gt__(self, other: Any) -> QueryExpression:
+        """Gère l'opérateur supérieur à (>)"""
+        return QueryExpression(self.name, ">", other)
+
+    def __le__(self, other: Any) -> QueryExpression:
+        """Gère l'opérateur inférieur ou égal (<=)"""
+        return QueryExpression(self.name, "<=", other)
+
+    def __ge__(self, other: Any) -> QueryExpression:
+        """Gère l'opérateur supérieur ou égal (>=)"""
+        return QueryExpression(self.name, ">=", other)
+
+    def __ne__(self, other: Any) -> QueryExpression:
+        """Gère l'opérateur différent de (!=)"""
+        return QueryExpression(self.name, "!=", other)
 
 
 class CharField(Field):
@@ -65,14 +103,15 @@ class DecimalField(Field):
             v = values.split(",")
             if len(v) != 2:
                 raise ValueError("incorrect amount of values given to DecimalField.")
-            
+
             parts = [part.strip() for part in v]
             if not (parts[0].isdigit() and parts[1].isdigit()):
                 raise TypeError("incorrect argument types given to DecimalField.")
-            
+
             precision = int(parts[0])
             scale = int(parts[1])
             if precision < 1 or scale < 0 or precision < scale:
                 raise ValueError("incorrect value(s) given to DecimalField.")
-            
+
         super().__init__(f"DECIMAL({precision},{scale})", **kwargs)
+
