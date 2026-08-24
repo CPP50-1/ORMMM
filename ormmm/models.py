@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Self
 
 from .db import DB
 from .fields import Field, IntegerField
@@ -125,7 +125,7 @@ class Model(metaclass=ModelMeta):
             setattr(self, field_name, value)
 
     @classmethod
-    def create(cls, values: dict):
+    def create(cls, values: dict) -> Self:
         instance = cls(**values)
         instance.save()
         return instance
@@ -153,7 +153,7 @@ class Model(metaclass=ModelMeta):
         return RecordSet(model_class=cls, domain=domain)
 
     @classmethod
-    def browse(cls, record_id):
+    def browse(cls, record_id) -> Self:
         if Model._db is None:
             raise RuntimeError("no database set: call Model.set_db() first")
         query, params = build_search(cls, [("id", "=", record_id)])
