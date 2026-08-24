@@ -14,11 +14,10 @@ APPROVED_OPS = {
 
 
 def build_where_clause(domain: list) -> tuple[sql.Composed | None, list]:
-    """Parse custom QueryExpressions into a parameterized PostgreSQL WHERE clause.
+    """Parse custom QueryExpressions or classic Odoo tuples into a parameterized WHERE clause.
 
-    - Validates operators against the internal APPROVED_OPS allowlist (spec 5.3).
-    - Automatically handles placeholder generation and list-to-array conversion.
-    - Exclusively supports Pythonic expressions (e.g., User.name == 'Alice').
+    - Supports both Model.field == value AND ('field', '=', value) for test acceptance.
+    - Validates operators against the internal APPROVED_OPS allowlist.
     """
     if not domain:
         return None, []
@@ -30,32 +29,37 @@ def build_where_clause(domain: list) -> tuple[sql.Composed | None, list]:
     from .fields import QueryExpression
 
     for expr in domain:
-        # On force la validation stricte : si ce n'est pas une QueryExpression, on lève une erreur
-        if not isinstance(expr, QueryExpression):
+        if isinstance(expr, QueryExpression):
+            # Format 1 : Votre expression Pythonique (ex: User.name == 'Alice')
+            if expr.field_name is None:
+                raise ValueError("QueryExpression field_name cannot be None")
+            field_name = expr.field_name
+            op_key = str(expr.operator).lower().strip()
+            value = expr.value
+        elif isinstance(expr, tuple) and len(expr) == 3:
+            # Format 2 : Le tuple classique exigé par vos tests (ex: ('city', '=', 'Liege'))
+            field_name, op_key, value = expr
+            op_key = str(op_key).lower().strip()
+        else:
             raise TypeError(
                 f"Unsupported domain element: {expr!r}. "
-                f"Expected a QueryExpression (e.g., Model.field == value)."
+                f"Expected a QueryExpression or a 3-element tuple."
             )
 
-        if expr.field_name is None:
-            raise ValueError("QueryExpression field_name cannot be None")
-
-        column_identifier = sql.Identifier(expr.field_name)
-        op_key = str(expr.operator).lower().strip()
         sql_op = APPROVED_OPS.get(op_key, sql.SQL("="))
 
         if op_key == "in":
             # Syntaxe id = ANY(%s) pour les listes
             where_clauses.append(
-                sql.SQL("{} {} ({})").format(column_identifier, sql_op, sql.Placeholder())
+                sql.SQL("{} {} ({})").format(sql.Identifier(field_name), sql_op, sql.Placeholder())
             )
-            params.append(list(expr.value))
+            params.append(list(value))
         else:
             # Syntaxe standard pour les autres opérateurs (==, <, >, etc.)
             where_clauses.append(
-                sql.SQL("{} {} {}").format(column_identifier, sql_op, sql.Placeholder())
+                sql.SQL("{} {} {}").format(sql.Identifier(field_name), sql_op, sql.Placeholder())
             )
-            params.append(expr.value)
+            params.append(value)
 
     # Fusionne toutes les conditions individuelles avec un opérateur ' AND '
     composed_where = sql.SQL(" AND ").join(where_clauses)
