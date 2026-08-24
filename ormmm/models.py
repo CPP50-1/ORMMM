@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from collections.abc import Iterator
 from typing import Any, ClassVar
 
@@ -15,7 +17,7 @@ class RecordSet:
         # Si records est fourni (ex: après un filtrage), le cache est pré-rempli
         self._cache: list | None = records
 
-    def filtered(self, predicate_lambda) -> "RecordSet":
+    def filtered(self, predicate_lambda) -> RecordSet:
         """[MUST 5.5] Permet le chaînage après le search sans ré-exécuter le SQL brut."""
         # Évalue le RecordSet actuel pour obtenir les instances en mémoire
         records = self._evaluate()
