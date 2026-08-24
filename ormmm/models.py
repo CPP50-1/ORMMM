@@ -9,6 +9,14 @@ from .sql import build_delete, build_insert, build_search, build_update
 
 registry = {}
 
+# Shared value cache indexed by (model_class, id) as per ADR
+_record_cache = {}
+
+
+def clear_cache() -> None:
+    """Clear the shared record cache. Called between tests to prevent leaks."""
+    _record_cache.clear()
+
 
 class RecordSet:
     def __init__(self, model_class: type, domain: list, records: list | None = None):
@@ -19,7 +27,7 @@ class RecordSet:
 
     def filtered(self, predicate_lambda) -> RecordSet:
         """[MUST 5.5] Allows chain-searching without executing raw SQL multiple times"""
-        # Evaluate the current RecordSet to obtain instanciated memory items
+        # Evaluate the current RecordSet to obtain instantiated memory items
         records = self._evaluate()
         # Apply the user's filter
         filtered_records = [r for r in records if predicate_lambda(r)]
@@ -51,7 +59,10 @@ class RecordSet:
             else:
                 row_data = row
 
-            self._cache.append(self.model_class(**row_data))
+            record = self.model_class(**row_data)
+            # Cache the record
+            _record_cache[(self.model_class, record.id)] = record
+            self._cache.append(record)
 
         return self._cache
 
@@ -120,20 +131,35 @@ class Model(metaclass=ModelMeta):
         Model._db = db
 
     def __init__(self, **kwargs):
-        for field_name, field in self._fields.items():
+        # Access _fields through class to avoid type checker issues with ClassVar
+        for field_name, field in self.__class__._fields.items():
             value = kwargs.get(field_name, getattr(field, "default", None))
             setattr(self, field_name, value)
+
+    def __eq__(self, other: object) -> bool:
+        """Identity based on (model class, id) as per ADR §5."""
+        if not isinstance(other, Model):
+            return NotImplemented
+        return type(self) is type(other) and self.id == other.id
+
+    def __hash__(self) -> int:
+        """Hash based on (model class, id) as per ADR §5."""
+        return hash((type(self), self.id))
 
     @classmethod
     def create(cls, values: dict) -> Self:
         instance = cls(**values)
         instance.save()
+        # Cache the created instance
+        _record_cache[(cls, instance.id)] = instance
         return instance
 
     def save(self):
         if Model._db is None:
             raise RuntimeError("no database set: call Model.set_db() first")
-        values = {name: getattr(self, name) for name in self._fields if name != "id"}
+        # Use __dict__ directly to bypass descriptors (especially Many2one which returns records, not IDs)
+        # Access _fields through class to avoid type checker issues with ClassVar
+        values = {name: self.__dict__.get(name) for name in self.__class__._fields if name != "id"}
         if self.id is None:
             row = Model._db.execute(*build_insert(type(self), values)).fetchone()
             if row is None:
@@ -156,6 +182,12 @@ class Model(metaclass=ModelMeta):
     def browse(cls, record_id) -> Self:
         if Model._db is None:
             raise RuntimeError("no database set: call Model.set_db() first")
+
+        # Check cache first as per ADR
+        cache_key = (cls, record_id)
+        if cache_key in _record_cache:
+            return _record_cache[cache_key]
+
         query, params = build_search(cls, [("id", "=", record_id)])
         cursor = Model._db.execute(query, params)
 
@@ -167,7 +199,11 @@ class Model(metaclass=ModelMeta):
             raise LookupError(f"{cls.__name__} with id={record_id}: query returned no description")
 
         col_names = [d[0] for d in description]
-        return cls(**dict(zip(col_names, row, strict=True)))
+        record = cls(**dict(zip(col_names, row, strict=True)))
+
+        # Store in cache
+        _record_cache[cache_key] = record
+        return record
 
     def write(self, values: dict):
         if Model._db is None:
@@ -177,9 +213,12 @@ class Model(metaclass=ModelMeta):
         params.append(self.id)
         Model._db.execute(query, params)
         # Update in-memory attributes
+        # Access _fields through class to avoid type checker issues with ClassVar
         for key, value in values.items():
-            if key in self._fields and key != "id":
-                setattr(self, key, value)
+            if key in self.__class__._fields and key != "id":
+                # Use direct __dict__ assignment to bypass descriptors
+                # This ensures Many2one fields store IDs, not records
+                self.__dict__[key] = value
 
     def unlink(self):
         if Model._db is None:

@@ -118,3 +118,39 @@ class DecimalField(Field):
 
         super().__init__(f"DECIMAL({precision},{scale})", **kwargs)
 
+
+class Many2oneField(Field):
+    """Many2one relationship field. Stores the foreign key ID, returns the related record."""
+
+    def __init__(self, target_model, **kwargs):
+        self.target_model = target_model  # The related model class
+        super().__init__("INTEGER", **kwargs)
+
+    def __get__(self, instance, owner):
+        if instance is None:
+            return self
+
+        # Get the raw ID from the instance's __dict__
+        id_value = instance.__dict__.get(self.name)
+
+        if id_value is None:
+            return None
+
+        # Lazy-load the related record via browse() (which uses the cache)
+        return self.target_model.browse(id_value)
+
+    def __set__(self, instance, value):
+        if value is None:
+            instance.__dict__[self.name] = None
+            return
+
+        # Import Model here to avoid circular imports
+        from .models import Model
+
+        if isinstance(value, Model):
+            # Store the ID of the related record
+            instance.__dict__[self.name] = value.id
+        else:
+            # Assume it's already an ID (integer)
+            instance.__dict__[self.name] = value
+

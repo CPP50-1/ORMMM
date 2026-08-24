@@ -58,8 +58,8 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 
 from ormmm.db import DB
-from ormmm.fields import BooleanField, CharField, IntegerField
-from ormmm.models import Model, registry
+from ormmm.fields import BooleanField, CharField, IntegerField, Many2oneField
+from ormmm.models import Model, clear_cache, registry
 from ormmm.sql import build_create_table
 
 
@@ -76,12 +76,13 @@ class Customer(Model):
 
 
 class Order(Model):
-    """Order model with reference and amount fields.
+    """Order model with reference, amount, and customer fields.
     Registry key: 'order'
     """
 
     reference = CharField()
     amount = IntegerField()
+    customer = Many2oneField(Customer)
 
 
 class Tag(Model):
@@ -134,6 +135,8 @@ class Adapter:
             # "order" is a reserved word, must be quoted
             self.db.execute('TRUNCATE TABLE customer, "order", tag RESTART IDENTITY CASCADE')
             self.db.reset_queries()
+            # Clear the shared record cache
+            clear_cache()
 
     # ------------------------------------------------------------------
     # Introspection
