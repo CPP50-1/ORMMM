@@ -5,7 +5,7 @@ from typing import Any, ClassVar
 
 from .db import DB
 from .fields import Field, IntegerField
-from .sql import build_insert, build_search
+from .sql import build_delete, build_insert, build_search
 
 registry = {}
 
@@ -161,4 +161,8 @@ class Model(metaclass=ModelMeta):
             setattr(self, key, value)
 
     def unlink(self):
-        pass
+        if Model._db is None:
+            raise RuntimeError("no database set: call Model.set_db() first")
+        if self.id is not None:
+            Model._db.execute(*build_delete(type(self), self.id))
+            self.id = None
