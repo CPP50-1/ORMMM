@@ -117,57 +117,21 @@ def build_insert(cls, values: dict) -> tuple[sql.Composed, list]:
 
 
 def build_search(cls, domain: list) -> tuple[sql.Composed, list]:
-    """Generate a parameterized SELECT * FROM table for a model.
+    """Generate a parameterized SELECT * FROM table statement for a model.
 
     - Table name: lowercase class name (matches registry key & adapter contract).
-    - Domain parsing handles QueryExpression objects and classic tuples.
-    - Operators are validated against a strict internal allowlist (spec 5.3).
-    - Column names go through sql.Identifier; values use sql.Placeholder()
-      to prevent SQL injection (spec 5.3).
+    - Delegates domain and placeholder generation to build_where_clause() (spec 5.3).
     """
     table_name = getattr(cls, "_table", cls.__name__.lower())
     table_identifier = sql.Identifier(table_name)
 
-    # Même dictionnaire de sécurité que nous avons validé ensemble
-    global APPROVED_OPS
+    # 1. On extrait le fragment de clause WHERE et ses paramètres associés
+    where_fragment, params = build_where_clause(domain)
 
-    if not domain:
-        # Pas de filtre : SELECT global simple
-        query = sql.SQL("SELECT * FROM {}").format(table_identifier)
-        return query, []
+    # 2. Si le domaine est vide (where_fragment vaut None) : SELECT global simple
+    if where_fragment is None:
+        return sql.SQL("SELECT * FROM {}").format(table_identifier), []
 
-    where_clauses: list[sql.Composable] = []
-    params: list = []
-
-    # Import local pour éviter les imports circulaires si QueryExpression est dans fields
-    from .fields import QueryExpression
-
-    for expr in domain:
-        if isinstance(expr, QueryExpression):
-            if expr.field_name is None:
-                raise ValueError("QueryExpression field_name cannot be None")
-
-            field_name = expr.field_name
-            op_key = str(expr.operator).lower().strip()
-            value = expr.value
-        else:
-            field_name, op_key, value = expr
-            op_key = str(op_key).lower().strip()
-
-        sql_op = APPROVED_OPS.get(op_key, sql.SQL("="))
-
-        # On utilise sql.Placeholder() à la place de %s écrit en dur
-        if op_key == "in":
-            where_clauses.append(sql.SQL("{} {} ({})").format(sql.Identifier(field_name), sql_op, sql.Placeholder()))
-            params.append(list(value))
-        else:
-            where_clauses.append(sql.SQL("{} {} {}").format(sql.Identifier(field_name), sql_op, sql.Placeholder()))
-            params.append(value)
-
-    # Assemblage final de la structure avec le WHERE
-    query = sql.SQL("SELECT * FROM {} WHERE {}").format(
-        table_identifier,
-        sql.SQL(" AND ").join(where_clauses)
-    )
-
+    # 3. Sinon, assemblage final sécurisé avec la clause WHERE [spec 5.3]
+    query = sql.SQL("SELECT * FROM {} WHERE {}").format(table_identifier, where_fragment)
     return query, params
