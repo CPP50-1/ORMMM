@@ -64,6 +64,43 @@ def build_delete(cls, record_id: int) -> tuple[sql.Composed, list]:
     return query, [record_id]
 
 
+def build_update(cls, values: dict) -> tuple[sql.Composed, list]:
+    """Generate a parameterized UPDATE ... WHERE id = %s for a model.
+
+    - Table name: lowercase class name (matches registry key & adapter contract).
+    - Only declared fields are updated; 'id' is excluded from SET clause.
+    - Column names are from cls._fields (trusted internal data).
+    - Values use %s placeholders (psycopg3 parameter binding, spec 5.3 — injection safety).
+    - Keys in `values` that are not declared fields are ignored.
+    """
+    set_parts: list = []
+    params: list = []
+    for name in cls._fields:
+        if name == "id":
+            continue
+        if name in values:
+            # Build "name = %s" using psycopg3 SQL composition
+            set_parts.append(sql.Identifier(name))
+            set_parts.append(sql.Placeholder())
+            params.append(values[name])
+
+    if not set_parts:
+        raise ValueError(f"no column values to update for {cls.__name__}")
+
+    # Build SET clause: "name1 = %s, name2 = %s"
+    set_clause = sql.SQL(", ").join(
+        sql.SQL("{} = {}").format(set_parts[i], set_parts[i + 1]) for i in range(0, len(set_parts), 2)
+    )
+
+    # Compose: UPDATE table SET col1 = %s, col2 = %s WHERE id = %s
+    query = sql.SQL("UPDATE {} SET {} WHERE id = {}").format(
+        sql.Identifier(cls.__name__.lower()),
+        set_clause,
+        sql.Placeholder(),
+    )
+    return query, params
+
+
 def build_search(cls, domain: list) -> tuple[sql.Composed, list]:
     """Generate a parameterized SELECT * FROM table for a model.
 
