@@ -158,14 +158,11 @@ class Model(metaclass=ModelMeta):
             raise RuntimeError("no database set: call Model.set_db() first")
         query, params = build_search(cls, [("id", "=", record_id)])
         cursor = Model._db.execute(query, params)
-        if cursor is None:
-            raise LookupError(f"{cls.__name__} with id={record_id} not found")
-
-        row = cursor.fetchone()
-        if row is None:
-            raise LookupError(f"{cls.__name__} with id={record_id} not found")
 
         # Walrus assignment
+        if (row := cursor.fetchone()) is None:
+            raise LookupError(f"{cls.__name__} with id={record_id} not found")
+
         if (description := cursor.description) is None:
             raise LookupError(f"{cls.__name__} with id={record_id}: query returned no description")
 
