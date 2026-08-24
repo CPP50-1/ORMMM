@@ -4,8 +4,8 @@ from collections.abc import Iterator
 from typing import Any, ClassVar
 
 from .db import DB
-from .fields import Field, IntegerField, QueryExpression
-from .sql import build_delete, build_insert
+from .fields import Field, IntegerField
+from .sql import build_delete, build_insert, build_search
 
 registry = {}
 
@@ -34,48 +34,23 @@ class RecordSet:
         if self.model_class._db is None:
             raise RuntimeError("no database set: call Model.set_db() first")
 
-        # 1. Construction dynamique du SELECT PostgreSQL
-        # Note : Votre projet inclut un module .sql, vous pourrez y déplacer cette logique plus tard.
-        table_name = getattr(self.model_class, "_table", self.model_class.__name__.lower())
+        # 1. On délègue la génération de la requête au module sql.py !
+        query, params = build_search(self.model_class, self.domain)
 
-        # Gestion basique d'un domaine (ex: [('status', '=', 'active')])
-        if self.domain:
-            where_clauses = []
-            params = []
-
-            for expr in self.domain:
-                if isinstance(expr, QueryExpression):
-                    clause, val = expr.to_sql()
-                    where_clauses.append(clause)
-                    params.append(val)
-                else:
-                    # Reste compatible si vous mélangez avec des tuples classiques
-                    field, op, value = expr
-                    where_clauses.append(f"{field} {op} %s")
-                    params.append(value)
-
-            sql = f"SELECT * FROM {table_name} WHERE {' AND '.join(where_clauses)};"
-        else:
-            sql = f"SELECT * FROM {table_name};"
-            params = []
-
-        # 2. Exécution via votre wrapper de connexion global
-        cursor = self.model_class._db.execute(sql, params)
+        # 2. Exécution de la requête via votre connexion globale [MUST 5.2]
+        cursor = self.model_class._db.execute(query, params)
         rows = cursor.fetchall()
 
         # 3. Extraction des colonnes pour instancier vos modèles
-        # (S'adapte si votre curseur renvoie des tuples ou des dictionnaires)
-        col_names = [desc[0] for desc in cursor.description]
+        col_names = [desc[0] for desc in cursor.description] if cursor.description else []
 
         self._cache = []
         for row in rows:
-            # Si le curseur renvoie des tuples, on crée un dictionnaire mapping
             if isinstance(row, tuple):
                 row_data = dict(zip(col_names, row, strict=True))
             else:
-                row_data = row # Si c'est déjà un dictionnaire (ex: RealDictCursor)
+                row_data = row
 
-            # Instanciation de votre classe de Modèle via son __init__ existant
             self._cache.append(self.model_class(**row_data))
 
         return self._cache
@@ -93,6 +68,13 @@ class RecordSet:
     def __repr__(self) -> str:
         # Pratique pour le debugging dans vos tests
         return f"<RecordSet {self.model_class.__name__} (cached={self._cache is not None})>"
+
+    def __getitem__(self, index: int | slice) -> Any:
+        """
+        Permet d'accéder aux enregistrements avec des crochets (ex: records[0]).
+        Déclenche l'évaluation de la requête SQL si ce n'est pas déjà fait.
+        """
+        return self._evaluate()[index]
 
 
 class ModelMeta(type):
