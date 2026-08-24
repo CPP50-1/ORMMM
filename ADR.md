@@ -66,4 +66,9 @@ What the group is knowingly giving up (e.g. "no identity map, we accept that two
 
 The exact signature of the five public verbs.
 
-=> TBA
+=>
+def create(cls, values: dict) -> Self
+def save(self)
+def search(cls, domain: list | None = None) -> RecordSet
+def unlink(self)
+def browse(cls, id) -> Self
