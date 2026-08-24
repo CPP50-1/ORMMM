@@ -5,7 +5,7 @@ from typing import Any, ClassVar
 
 from .db import DB
 from .fields import Field, IntegerField
-from .sql import build_delete, build_insert, build_search
+from .sql import build_delete, build_insert, build_search, build_update
 
 registry = {}
 
@@ -153,12 +153,33 @@ class Model(metaclass=ModelMeta):
         return RecordSet(model_class=cls, domain=domain)
 
     @classmethod
-    def browse(cls, id):
-        return cls()
+    def browse(cls, record_id):
+        if Model._db is None:
+            raise RuntimeError("no database set: call Model.set_db() first")
+        query, params = build_search(cls, [("id", "=", record_id)])
+        cursor = Model._db.execute(query, params)
+
+        # Walrus assignment
+        if (row := cursor.fetchone()) is None:
+            raise LookupError(f"{cls.__name__} with id={record_id} not found")
+
+        if (description := cursor.description) is None:
+            raise LookupError(f"{cls.__name__} with id={record_id}: query returned no description")
+
+        col_names = [d[0] for d in description]
+        return cls(**dict(zip(col_names, row, strict=True)))
 
     def write(self, values: dict):
+        if Model._db is None:
+            raise RuntimeError("no database set: call Model.set_db() first")
+
+        query, params = build_update(self.__class__, values)
+        params.append(self.id)
+        Model._db.execute(query, params)
+        # Update in-memory attributes
         for key, value in values.items():
-            setattr(self, key, value)
+            if key in self._fields and key != "id":
+                setattr(self, key, value)
 
     def unlink(self):
         if Model._db is None:
