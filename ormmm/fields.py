@@ -40,31 +40,31 @@ class Field:
         return f"<{class_name} {attr_string}>"
 
     def __eq__(self, other: Any) -> QueryExpression:
-        """Gère l'opérateur égalité (==)"""
         return QueryExpression(self.name, "=", other)
 
     def __hash__(self) -> int:
         return hash(self.name)
 
     def __lt__(self, other: Any) -> QueryExpression:
-        """Gère l'opérateur inférieur à (<)"""
         return QueryExpression(self.name, "<", other)
 
     def __gt__(self, other: Any) -> QueryExpression:
-        """Gère l'opérateur supérieur à (>)"""
         return QueryExpression(self.name, ">", other)
 
     def __le__(self, other: Any) -> QueryExpression:
-        """Gère l'opérateur inférieur ou égal (<=)"""
         return QueryExpression(self.name, "<=", other)
 
     def __ge__(self, other: Any) -> QueryExpression:
-        """Gère l'opérateur supérieur ou égal (>=)"""
         return QueryExpression(self.name, ">=", other)
 
     def __ne__(self, other: Any) -> QueryExpression:
-        """Gère l'opérateur différent de (!=)"""
         return QueryExpression(self.name, "!=", other)
+
+    def in_(self, values: Any) -> QueryExpression:
+        """Gère l'opérateur d'appartenance IN (ex: Customer.id.in_([1, 2]))"""
+        # On force la conversion en tuple car en psycopg, un tuple devient une
+        # liste SQL (1, 2, 3) alors qu'une liste devient un tableau ARRAY[1, 2, 3]
+        return QueryExpression(self.name, "in", tuple(values))
 
 
 class CharField(Field):
