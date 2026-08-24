@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Iterator
 from typing import Any, ClassVar
 
+from psycopg import sql
+
 from .db import DB
 from .fields import Field, IntegerField, QueryExpression
 from .sql import build_insert
@@ -34,38 +36,66 @@ class RecordSet:
         if self.model_class._db is None:
             raise RuntimeError("no database set: call Model.set_db() first")
 
-        # 1. Construction dynamique du SELECT PostgreSQL
-        # Note : Votre projet inclut un module .sql, vous pourrez y déplacer cette logique plus tard.
+        # 1. Extraction sécurisée du nom de la table
         table_name = getattr(self.model_class, "_table", self.model_class.__name__.lower())
+        table_identifier = sql.Identifier(table_name)
 
-        # Gestion basique d'un domaine (ex: [('status', '=', 'active')])
+        # 2. Dictionnaire d'opérateurs approuvés (LiteralStrings purs)
+        APPROVED_OPS = {
+            "=": sql.SQL("="),
+            "!=": sql.SQL("!="),
+            "<": sql.SQL("<"),
+            ">": sql.SQL(">"),
+            "<=": sql.SQL("<="),
+            ">=": sql.SQL(">="),
+            "like": sql.SQL("LIKE"),
+            "ilike": sql.SQL("ILIKE"),
+            "in": sql.SQL("= ANY"),  # <-- Remplacer "IN" par "= ANY" pour PostgreSQL
+        }
+
         if self.domain:
             where_clauses = []
             params = []
 
             for expr in self.domain:
                 if isinstance(expr, QueryExpression):
-                    clause, val = expr.to_sql()
-                    where_clauses.append(clause)
+                    if expr.field_name is None:
+                        raise ValueError("QueryExpression field_name cannot be None")
+                    column_identifier = sql.Identifier(expr.field_name)
+                    op_key = str(expr.operator).lower().strip()
+                    sql_op = APPROVED_OPS.get(op_key, sql.SQL("="))
+                    where_clauses.append(
+                        sql.SQL("{} {} (%s)").format(column_identifier, sql_op)
+                    )
+                    # Sécurité : On s'assure d'envoyer une liste Python pure (qui devient un ARRAY en PG)
+                    val = list(expr.value) if op_key == "in" else expr.value
                     params.append(val)
                 else:
-                    # Reste compatible si vous mélangez avec des tuples classiques
                     field, op, value = expr
-                    where_clauses.append(f"{field} {op} %s")
-                    params.append(value)
+                    op_key = str(op).lower().strip()
+                    sql_op = APPROVED_OPS.get(op_key, sql.SQL("="))
+                    where_clauses.append(
+                        sql.SQL("{} {} (%s)").format(sql.Identifier(field), sql_op)
+                    )
+                    val = list(value) if op_key == "in" else value
+                    params.append(val)
 
-            sql = f"SELECT * FROM {table_name} WHERE {' AND '.join(where_clauses)};"
+            # Assemblage final avec clauses WHERE
+            query = sql.SQL("SELECT * FROM {} WHERE {};").format(
+                table_identifier,
+                sql.SQL(" AND ").join(where_clauses)
+            )
         else:
-            sql = f"SELECT * FROM {table_name};"
+            # Assemblage final sans clauses WHERE
+            query = sql.SQL("SELECT * FROM {};").format(table_identifier)
             params = []
 
-        # 2. Exécution via votre wrapper de connexion global
-        cursor = self.model_class._db.execute(sql, params)
+        # 3. Exécution de la requête via votre connexion globale [MUST 5.2]
+        cursor = self.model_class._db.execute(query, params)
         rows = cursor.fetchall()
 
-        # 3. Extraction des colonnes pour instancier vos modèles
-        # (S'adapte si votre curseur renvoie des tuples ou des dictionnaires)
-        col_names = [desc[0] for desc in cursor.description]
+        # 4. Extraction des colonnes pour instancier vos modèles
+        col_names = [desc[0] for desc in cursor.description] if cursor.description else []
 
         self._cache = []
         for row in rows:
@@ -93,6 +123,13 @@ class RecordSet:
     def __repr__(self) -> str:
         # Pratique pour le debugging dans vos tests
         return f"<RecordSet {self.model_class.__name__} (cached={self._cache is not None})>"
+
+    def __getitem__(self, index: int | slice) -> Any:
+        """
+        Permet d'accéder aux enregistrements avec des crochets (ex: records[0]).
+        Déclenche l'évaluation de la requête SQL si ce n'est pas déjà fait.
+        """
+        return self._evaluate()[index]
 
 
 class ModelMeta(type):
