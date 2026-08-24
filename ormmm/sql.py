@@ -53,3 +53,12 @@ def build_insert(cls, values: dict) -> tuple[sql.Composed, list]:
         sql.SQL(", ").join(sql.Placeholder() for _ in columns),
     )
     return query, params
+
+
+def build_delete(cls, record_id: int) -> tuple[sql.Composed, list]:
+    """Generate a parameterized DELETE for a model by id."""
+    query = sql.SQL("DELETE FROM {} WHERE id = {}").format(
+        sql.Identifier(cls.__name__.lower()),
+        sql.Placeholder(),
+    )
+    return query, [record_id]
