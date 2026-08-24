@@ -2,7 +2,7 @@ from collections.abc import Iterator
 from typing import Any, ClassVar
 
 from .db import DB
-from .fields import Field, IntegerField
+from .fields import Field, IntegerField, QueryExpression
 from .sql import build_insert
 
 registry = {}
@@ -40,9 +40,18 @@ class RecordSet:
         if self.domain:
             where_clauses = []
             params = []
-            for field, op, value in self.domain:
-                where_clauses.append(f"{field} {op} %s")
-                params.append(value)
+
+            for expr in self.domain:
+                if isinstance(expr, QueryExpression):
+                    clause, val = expr.to_sql()
+                    where_clauses.append(clause)
+                    params.append(val)
+                else:
+                    # Reste compatible si vous mélangez avec des tuples classiques
+                    field, op, value = expr
+                    where_clauses.append(f"{field} {op} %s")
+                    params.append(value)
+
             sql = f"SELECT * FROM {table_name} WHERE {' AND '.join(where_clauses)};"
         else:
             sql = f"SELECT * FROM {table_name};"
@@ -150,7 +159,7 @@ class Model(metaclass=ModelMeta):
             raise NotImplementedError("UPDATE not implemented yet")
 
     @classmethod
-    def search(cls, domain: list | None = None):
+    def search(cls, domain: list | None = None) -> RecordSet:
         """
         [MUST 5.5] Ne déclenche aucun SQL à l'appel.
         Renvoie l'objet RecordSet paresseux (lazy).
