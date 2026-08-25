@@ -24,6 +24,12 @@ class Field:
     def __get__(self, instance, owner):
         if instance is None:
             return self
+
+        # If the instance is lazy and this field has not been loaded from DB yet
+        if self.name not in instance.__dict__ and getattr(instance, "_lazy", False):
+            instance._load()
+
+        # Read stored value from instance storage (__dict__)
         return instance.__dict__.get(self.name)
 
     def __set__(self, instance, value):
@@ -130,13 +136,17 @@ class Many2oneField(Field):
         if instance is None:
             return self
 
-        # Get the raw ID from the instance's __dict__
+        # If parent instance is lazy and has not loaded its columns (including the FK) yet
+        if self.name not in instance.__dict__ and getattr(instance, "_lazy", False):
+            instance._load()
+
+        # Retrieve integer ID stored in __dict__ (foreign key)
         id_value = instance.__dict__.get(self.name)
 
         if id_value is None:
             return None
 
-        # Lazy-load the related record via browse() (which uses the cache)
+        # Return a lazy instance of the target model without issuing SQL queries
         return self.target_model.browse(id_value)
 
     def __set__(self, instance, value):
