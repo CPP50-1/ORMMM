@@ -46,7 +46,12 @@ def build_where_clause(domain: list) -> tuple[sql.Composed | None, list]:
                 f"Expected a QueryExpression or a 3-element tuple."
             )
 
-        sql_op = APPROVED_OPS.get(op_key, sql.SQL("="))
+        # Fail loudly on typos: silently mapping to '=' would make a bad
+        # operator match every row instead of erroring out.
+        if op_key not in APPROVED_OPS:
+            raise ValueError(f"unsupported operator {op_key!r} — allowed: {sorted(APPROVED_OPS)}")
+
+        sql_op = APPROVED_OPS[op_key]
 
         if op_key == "in":
             # id = ANY(%s)  syntax for lists
