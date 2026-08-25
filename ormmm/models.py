@@ -49,7 +49,7 @@ class RecordSet:
         cursor = self.model_class._db.execute(query, params)
         rows = cursor.fetchall()
 
-        # 3. Extract columns to instanciate models
+        # 3. Extract columns to instantiate models
         col_names = [desc[0] for desc in cursor.description] if cursor.description else []
 
         self._cache = []
