@@ -73,7 +73,11 @@ def build_create_table(cls) -> sql.Composed:
     - id column: SERIAL PRIMARY KEY (skips the metaclass-injected IntField).
     - Other columns: rendered from cls._fields in declaration order.
     - Column types come from field.sql_type (trusted internal constants).
+    - Many2one fields: INTEGER with FOREIGN KEY constraint.
     """
+    # Local import to avoid circular dependencies
+    from .fields import Many2oneField
+
     # Start with the auto-increment primary key
     columns: list[sql.Composable] = [sql.SQL("id SERIAL PRIMARY KEY")]
 
@@ -82,7 +86,17 @@ def build_create_table(cls) -> sql.Composed:
             # Skip the metaclass-injected IntField; we render SERIAL PRIMARY KEY instead
             continue
 
-        columns.append(sql.SQL("{} {}").format(sql.Identifier(name), sql.SQL(field.sql_type)))
+        if isinstance(field, Many2oneField):
+            # Many2one field: INTEGER with FOREIGN KEY
+            target_table = field.target_model.__name__.lower()
+            columns.append(
+                sql.SQL("{} INTEGER REFERENCES {} (id)").format(
+                    sql.Identifier(name),
+                    sql.Identifier(target_table)
+                )
+            )
+        else:
+            columns.append(sql.SQL("{} {}").format(sql.Identifier(name), sql.SQL(field.sql_type)))
 
     # Compose: CREATE TABLE IF NOT EXISTS table_name (col1, col2, ...)
     # IF NOT EXISTS makes setup idempotent, safe to re-run without teardown
