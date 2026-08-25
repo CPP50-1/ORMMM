@@ -46,7 +46,12 @@ def build_where_clause(domain: list) -> tuple[sql.Composed | None, list]:
                 f"Expected a QueryExpression or a 3-element tuple."
             )
 
-        sql_op = APPROVED_OPS.get(op_key, sql.SQL("="))
+        # Fail loudly on typos: silently mapping to '=' would make a bad
+        # operator match every row instead of erroring out.
+        if op_key not in APPROVED_OPS:
+            raise ValueError(f"unsupported operator {op_key!r} — allowed: {sorted(APPROVED_OPS)}")
+
+        sql_op = APPROVED_OPS[op_key]
 
         if op_key == "in":
             # id = ANY(%s)  syntax for lists
@@ -199,3 +204,15 @@ def build_search(cls, domain: list) -> tuple[sql.Composed, list]:
     # 3. Otherwise, rebuild everything together with the where clause [5.3]
     query = sql.SQL("SELECT * FROM {} WHERE {}").format(table_identifier, where_fragment)
     return query, params
+
+
+def build_search_by_ids(cls, ids: list) -> tuple[sql.Composed, list]:
+    """Generate a parameterized SELECT * ... WHERE id = ANY(%s) for batch loading.
+
+    - Used by RecordSet.prefetch() to fetch many rows in ONE query (spec 5.6).
+    - The id list is passed as a %s parameter (psycopg adapts a Python list
+      to a PostgreSQL array), never string-formatted (spec 5.3).
+    """
+    table_name = getattr(cls, "_table", cls.__name__.lower())
+    query = sql.SQL("SELECT * FROM {} WHERE id = ANY(%s)").format(sql.Identifier(table_name))
+    return query, [list(ids)]

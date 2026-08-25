@@ -151,6 +151,8 @@ class Many2oneField(Field):
 
     def __set__(self, instance, value):
         if value is None:
+            if self.required:
+                raise ValueError(f"{self.name} is mandatory.")
             instance.__dict__[self.name] = None
             return
 
@@ -158,9 +160,22 @@ class Many2oneField(Field):
         from .models import Model
 
         if isinstance(value, Model):
+            if not isinstance(value, self.target_model):
+                raise TypeError(
+                    f"{self.name} expects a {self.target_model.__name__} record or an id, "
+                    f"got {type(value).__name__}."
+                )
+            if value.id is None:
+                raise TypeError(f"{self.name} cannot link to an unsaved {type(value).__name__} record.")
             # Store the ID of the related record
             instance.__dict__[self.name] = value.id
-        else:
-            # Assume it's already an ID (integer)
-            instance.__dict__[self.name] = value
+            return
 
+        # bool is an int subclass and would sneak past otherwise
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise TypeError(
+                f"{self.name} expects a {self.target_model.__name__} record or an int id, "
+                f"got {type(value).__name__}."
+            )
+        # Raw ids are accepted without an existence check (documented limitation)
+        instance.__dict__[self.name] = value
