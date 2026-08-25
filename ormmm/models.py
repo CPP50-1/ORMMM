@@ -1,21 +1,19 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import Any, ClassVar, Self
+from typing import Any, ClassVar, Self, cast
 
+from . import cache
 from .db import DB
-from .fields import Field, IntegerField
-from .sql import build_delete, build_insert, build_search, build_update
+from .fields import Field, IntegerField, Many2oneField
+from .sql import build_delete, build_insert, build_search, build_search_by_ids, build_update
 
 registry = {}
 
-# Shared value cache indexed by (model_class, id) as per ADR
-_record_cache = {}
-
 
 def clear_cache() -> None:
-    """Clear the shared record cache. Called between tests to prevent leaks."""
-    _record_cache.clear()
+    """Clear the shared value cache. Called between tests to prevent leaks."""
+    cache.clear()
 
 
 class RecordSet:
@@ -60,11 +58,31 @@ class RecordSet:
                 row_data = row
 
             record = self.model_class(**row_data)
-            # Cache the record
-            _record_cache[(self.model_class, record.id)] = record
             self._cache.append(record)
 
         return self._cache
+
+    def prefetch(self, field_name: str) -> RecordSet:
+        """[ADR] Explicit batch-loading: ONE query fills the shared value cache
+        with the rows targeted by `field_name` for every record of this RecordSet.
+        Subsequent browse() calls then hit the cache and issue no SQL.
+        """
+        records = self._evaluate()
+        field = self.model_class._fields.get(field_name)
+
+        if isinstance(field, Many2oneField):
+            target = field.target_model
+            target_ids = {r.__dict__[field_name] for r in records if r.__dict__.get(field_name) is not None}
+            missing_ids = sorted(i for i in target_ids if cache.get(target, i) is None)
+            if missing_ids:
+                query, params = build_search_by_ids(target, missing_ids)
+                cursor = self.model_class._db.execute(query, params)
+                col_names = [d[0] for d in cursor.description]
+                for row in cursor.fetchall():
+                    row_data = dict(zip(col_names, row, strict=True))
+                    cache.put(target, row_data["id"], row_data)
+
+        return self
 
     # --- [MUST 5.5] Late/lazy evaluation triggers ---
     def __len__(self) -> int:
@@ -124,6 +142,7 @@ class ModelMeta(type):
 class Model(metaclass=ModelMeta):
     _fields: ClassVar[dict[str, Field]] = {}
     _db: ClassVar[DB | None] = None
+    id: int | None = None
 
     @classmethod
     def set_db(cls, db: DB) -> None:
@@ -148,6 +167,17 @@ class Model(metaclass=ModelMeta):
         if Model._db is None:
             raise RuntimeError("no database set: call Model.set_db() first")
 
+        # pyright types instance __dict__ as MappingProxyType under custom
+        # metaclasses; at runtime it is a plain dict.
+        record_data = cast(dict[str, Any], self.__dict__)
+
+        # A prefetch-warmed row loads straight from the shared value cache, no SQL
+        cached_row = cache.get(self.__class__, self.id)
+        if cached_row is not None:
+            record_data.update(cached_row)
+            self._lazy = False
+            return
+
         query, params = build_search(self.__class__, [("id", "=", self.id)])
         cursor = Model._db.execute(query, params)
 
@@ -160,13 +190,13 @@ class Model(metaclass=ModelMeta):
 
         col_names = [d[0] for d in description]
         for col, val in zip(col_names, row, strict=True):
-            # Store raw values directly in __dict__ (e.g. integer FKs)
-            # without triggering descriptor logic
-            self.__dict__[col] = val
+            # Store raw values directly (e.g. integer FKs) without triggering descriptor logic
+            record_data[col] = val
 
-        # Mark record as fully loaded and store in cache
+        # Mark record as fully loaded. Deliberately NOT written to the value cache:
+        # only prefetch writes, otherwise repeated targets would collapse the naive
+        # N+1 pattern below the >=50 threshold measured in L6 (spec 5.6).
         self._lazy = False
-        _record_cache[(self.__class__, self.id)] = self
 
     def __eq__(self, other: object) -> bool:
         """Identity based on (model class, id) as per ADR §5."""
@@ -209,32 +239,42 @@ class Model(metaclass=ModelMeta):
         return RecordSet(model_class=cls, domain=domain)
 
     @classmethod
-    def browse(cls, record_id) -> Self:
-        # Check cache first as per ADR
-        cache_key = (cls, record_id)
-        if cache_key in _record_cache:
-            return _record_cache[cache_key]
+    def browse(cls, record_id: int) -> Self:
+        if Model._db is None:
+            raise RuntimeError("no database set: call Model.set_db() first")
 
+        # Consult the shared value cache first as per ADR (written only by prefetch):
+        # a warmed row comes back fully loaded, no SQL.
+        cached_row = cache.get(cls, record_id)
+        if cached_row is not None:
+            return cls(**cached_row)
+
+        # Otherwise return a lazy placeholder of the target model without issuing SQL queries
         return cls(id=record_id, _lazy=True)
 
     def write(self, values: dict):
         if Model._db is None:
             raise RuntimeError("no database set: call Model.set_db() first")
+        if self.id is None:
+            return
 
         query, params = build_update(self.__class__, values)
         params.append(self.id)
         Model._db.execute(query, params)
+        # The cached row (if any) is now outdated
+        cache.drop(self.__class__, self.id)
         # Update in-memory attributes
         # Access _fields through class to avoid type checker issues with ClassVar
         for key, value in values.items():
             if key in self.__class__._fields and key != "id":
                 # Use direct __dict__ assignment to bypass descriptors
                 # This ensures Many2one fields store IDs, not records
-                self.__dict__[key] = value
+                self.__setattr__(key, value)
 
     def unlink(self):
         if Model._db is None:
             raise RuntimeError("no database set: call Model.set_db() first")
         if self.id is not None:
             Model._db.execute(*build_delete(type(self), self.id))
+            cache.drop(type(self), self.id)
             self.id = None
