@@ -79,6 +79,21 @@ class TestVerbGuards:
         assert orm.query_count() == 0
         assert draft.id is None
 
+    def test_write_with_only_undeclared_keys_is_a_silent_noop(self, orm):
+        customer = Customer.create({"name": "Ada", "city": "Liege", "vip": True})
+        orm.reset_queries()
+        customer.write({"tags": ["urgent"]})
+        assert orm.query_count() == 0
+        assert customer.name == "Ada"
+
+    def test_write_ignores_undeclared_keys_but_updates_known_columns(self, orm):
+        customer = Customer.create({"name": "Ada", "city": "Liege", "vip": True})
+        orm.reset_queries()
+        customer.write({"name": "Grace", "bogus_field": 42})
+        assert orm.query_count() == 1
+        assert customer.name == "Grace"
+        assert not hasattr(customer, "bogus_field") or customer.__dict__.get("bogus_field") is None
+
     def test_clear_cache_alias_empties_the_value_cache(self):
         cache.put(Customer, 1, {"name": "Ada"})
         clear_cache()

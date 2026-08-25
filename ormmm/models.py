@@ -258,18 +258,22 @@ class Model(metaclass=ModelMeta):
         if self.id is None:
             return
 
-        query, params = build_update(self.__class__, values)
+        # Only declared columns reach SQL. Undeclared keys (e.g. relation
+        # assignments like 'tags' before L4 exists) are ignored instead of
+        # aborting the whole call — build_update keeps its strict raise.
+        stored_values = {key: value for key, value in values.items() if key in self.__class__._fields and key != "id"}
+        if not stored_values:
+            return
+
+        query, params = build_update(self.__class__, stored_values)
         params.append(self.id)
         Model._db.execute(query, params)
         # The cached row (if any) is now outdated
         cache.drop(self.__class__, self.id)
-        # Update in-memory attributes
-        # Access _fields through class to avoid type checker issues with ClassVar
-        for key, value in values.items():
-            if key in self.__class__._fields and key != "id":
-                # Use direct __dict__ assignment to bypass descriptors
-                # This ensures Many2one fields store IDs, not records
-                self.__setattr__(key, value)
+        # Update in-memory attributes through the descriptors so Many2one
+        # values are coerced exactly like direct assignment
+        for key, value in stored_values.items():
+            self.__setattr__(key, value)
 
     def unlink(self):
         if Model._db is None:
