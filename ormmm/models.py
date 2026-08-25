@@ -130,11 +130,43 @@ class Model(metaclass=ModelMeta):
         """Designate the shared connection wrapper; every model issues SQL through it."""
         Model._db = db
 
-    def __init__(self, **kwargs):
-        # Access _fields through class to avoid type checker issues with ClassVar
-        for field_name, field in self.__class__._fields.items():
-            value = kwargs.get(field_name, getattr(field, "default", None))
-            setattr(self, field_name, value)
+    def __init__(self, _lazy: bool = False, **kwargs):
+        self._lazy = _lazy
+        if _lazy:
+            if "id" in kwargs:
+                self.id = kwargs["id"]
+        else:
+            # Access _fields through class to avoid type checker issues with ClassVar
+            for field_name, field in self.__class__._fields.items():
+                value = kwargs.get(field_name, getattr(field, "default", None))
+                setattr(self, field_name, value)
+
+    def _load(self) -> None:
+        """On-demand lazy loading of record columns from PostgreSQL."""
+        if not getattr(self, "_lazy", False) or self.id is None:
+            return
+        if Model._db is None:
+            raise RuntimeError("no database set: call Model.set_db() first")
+
+        query, params = build_search(self.__class__, [("id", "=", self.id)])
+        cursor = Model._db.execute(query, params)
+
+        # Walrus assignment
+        if (row := cursor.fetchone()) is None:
+            raise LookupError(f"{self.__class__.__name__} with id={self.id} not found")
+
+        if (description := cursor.description) is None:
+            raise LookupError(f"{self.__class__.__name__} with id={self.id}: query returned no description")
+
+        col_names = [d[0] for d in description]
+        for col, val in zip(col_names, row, strict=True):
+            # Store raw values directly in __dict__ (e.g. integer FKs)
+            # without triggering descriptor logic
+            self.__dict__[col] = val
+
+        # Mark record as fully loaded and store in cache
+        self._lazy = False
+        _record_cache[(self.__class__, self.id)] = self
 
     def __eq__(self, other: object) -> bool:
         """Identity based on (model class, id) as per ADR §5."""
@@ -150,8 +182,6 @@ class Model(metaclass=ModelMeta):
     def create(cls, values: dict) -> Self:
         instance = cls(**values)
         instance.save()
-        # Cache the created instance
-        _record_cache[(cls, instance.id)] = instance
         return instance
 
     def save(self):
@@ -180,30 +210,12 @@ class Model(metaclass=ModelMeta):
 
     @classmethod
     def browse(cls, record_id) -> Self:
-        if Model._db is None:
-            raise RuntimeError("no database set: call Model.set_db() first")
-
         # Check cache first as per ADR
         cache_key = (cls, record_id)
         if cache_key in _record_cache:
             return _record_cache[cache_key]
 
-        query, params = build_search(cls, [("id", "=", record_id)])
-        cursor = Model._db.execute(query, params)
-
-        # Walrus assignment
-        if (row := cursor.fetchone()) is None:
-            raise LookupError(f"{cls.__name__} with id={record_id} not found")
-
-        if (description := cursor.description) is None:
-            raise LookupError(f"{cls.__name__} with id={record_id}: query returned no description")
-
-        col_names = [d[0] for d in description]
-        record = cls(**dict(zip(col_names, row, strict=True)))
-
-        # Store in cache
-        _record_cache[cache_key] = record
-        return record
+        return cls(id=record_id, _lazy=True)
 
     def write(self, values: dict):
         if Model._db is None:
